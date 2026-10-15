@@ -1,4 +1,5 @@
 "use client";
+import { readJsonResponse } from "./response";
 import {
   createContext,
   useContext,
@@ -58,13 +59,13 @@ export async function api<T = unknown>(
     throw new Error("Please sign in");
   }
   if (response.status === 204) return undefined as T;
-  const data = await response.json();
-  if (data.error?.code === "EMAIL_NOT_VERIFIED") {
+  const data = await readJsonResponse(response);
+  if (data?.error?.code === "EMAIL_NOT_VERIFIED") {
     window.location.assign("/verify-email");
     throw new Error("Verify your email to continue.");
   }
   if (!response.ok)
-    throw new Error(data.error?.message ?? data.message ?? "Request failed");
+    throw new Error(data?.error?.message ?? data?.message ?? "Request failed");
   return data;
 }
 export async function downloadFile(path: string, filename: string) {

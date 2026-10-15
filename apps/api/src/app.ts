@@ -99,13 +99,27 @@ export function buildApp() {
         },
       );
       const response = await auth.handler(request);
+      const body = await response.text();
+      if (response.status >= 500 && !body.trim()) {
+        app.log.error(
+          { status: response.status },
+          "Authentication returned an empty error response",
+        );
+        return reply.code(response.status).send({
+          error: {
+            code: "AUTH_SERVICE_UNAVAILABLE",
+            message:
+              "Authentication is temporarily unavailable. Please try again later.",
+          },
+        });
+      }
       reply.code(response.status);
       response.headers.forEach((v, k) => {
         if (k !== "set-cookie") reply.header(k, v);
       });
       const cookies = response.headers.getSetCookie();
       if (cookies.length) reply.header("set-cookie", cookies);
-      return reply.send(await response.text());
+      return reply.send(body);
     },
   });
   app.get("/health", async () => ({ ok: true }));

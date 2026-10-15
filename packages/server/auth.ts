@@ -1,8 +1,27 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { db } from "./db.js";
-import { sendEmail } from "./email.js";
+import { sendEmail, EmailDeliveryError } from "./email.js";
 import { serviceOrigin } from "../shared/urls.js";
+async function sendAccountEmail(to: string, subject: string, text: string) {
+  try {
+    await sendEmail(to, subject, text);
+  } catch (error) {
+    // Provider errors contain only a status and category, never message content.
+    console.error("Account email delivery failed", {
+      reason: error instanceof Error ? error.name : "UnknownError",
+      ...(error instanceof EmailDeliveryError
+        ? { providerStatus: error.status, providerCode: error.providerCode }
+        : {}),
+    });
+    throw new APIError("SERVICE_UNAVAILABLE", {
+      code: "EMAIL_DELIVERY_UNAVAILABLE",
+      message:
+        "We couldn't send the email. Please try again later or contact support.",
+    });
+  }
+}
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql", transaction: true }),
   secret: process.env.BETTER_AUTH_SECRET,
@@ -14,7 +33,7 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     minPasswordLength: 10,
     sendResetPassword: async ({ user, url }) => {
-      await sendEmail(
+      await sendAccountEmail(
         user.email,
         "Reset your Folio password",
         `Reset your password: ${url}`,
@@ -26,7 +45,7 @@ export const auth = betterAuth({
     sendOnSignIn: true,
     expiresIn: 3600,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendEmail(
+      await sendAccountEmail(
         user.email,
         "Verify your Folio email",
         `Verify your email to access Folio: ${url}`,

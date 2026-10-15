@@ -1,5 +1,14 @@
 import "dotenv/config";
 import nodemailer from "nodemailer";
+export class EmailDeliveryError extends Error {
+  constructor(
+    public status: number,
+    public providerCode?: string,
+  ) {
+    super(`Email provider returned ${status}`);
+    this.name = "EmailDeliveryError";
+  }
+}
 export async function sendEmail(
   to: string,
   subject: string,
@@ -22,8 +31,14 @@ export async function sendEmail(
       }),
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok)
-      throw new Error(`Email provider returned ${response.status}`);
+    if (!response.ok) {
+      const details = await response.json().catch(() => null);
+      const code =
+        typeof details?.name === "string" && /^[a-z_]{1,80}$/.test(details.name)
+          ? details.name
+          : undefined;
+      throw new EmailDeliveryError(response.status, code);
+    }
   } else {
     await nodemailer
       .createTransport({
