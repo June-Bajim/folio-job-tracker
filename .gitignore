@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+.env
+*.log
+test-results
+playwright-report
+*.tsbuildinfo
+backups
+apps/web/.env.local
+
+# Local environment and credentials
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key

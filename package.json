@@ -1,0 +1,63 @@
+{
+  "name": "folio-job-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,api,worker \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:worker\"",
+    "dev:web": "next dev apps/web --webpack --port 3000",
+    "dev:api": "tsx watch apps/api/src/index.ts",
+    "dev:worker": "tsx watch apps/worker/src/index.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p apps/web/tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "build": "next build apps/web --webpack && tsc -p tsconfig.build.json",
+    "start:web": "next start apps/web",
+    "start:api": "node dist/apps/api/src/index.js",
+    "start:worker": "node dist/apps/worker/src/index.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@prisma/client": "^6.19.0",
+    "better-auth": "latest",
+    "bullmq": "^5.0.0",
+    "dotenv": "^17.0.0",
+    "fastify": "^5.0.0",
+    "luxon": "^3.0.0",
+    "next": "^16.0.0",
+    "nodemailer": "^10.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "latest",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/luxon": "^3.0.0",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^7.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.9.10",
+    "prisma": "^6.19.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^5.0.4"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  }
+}
