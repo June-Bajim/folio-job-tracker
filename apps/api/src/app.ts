@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { ZodError, z } from "zod";
 import { db } from "../../../packages/server/db.js";
 import { auth } from "../../../packages/server/auth.js";
+import { serviceOrigin } from "../../../packages/shared/urls.js";
 import {
   applicationSchema,
   interviewSchema,
@@ -35,7 +36,7 @@ export function buildApp() {
     bodyLimit: 1048576,
   });
   app.register(cors, {
-    origin: process.env.WEB_URL ?? "http://localhost:3000",
+    origin: serviceOrigin(process.env.WEB_URL, "http://localhost:3000"),
     credentials: true,
   });
   app.register(rateLimit, { max: 200, timeWindow: "1 minute" });
@@ -46,36 +47,32 @@ export function buildApp() {
   );
   app.setErrorHandler((error, _req, reply) => {
     if (error instanceof ZodError)
-      return reply
-        .code(400)
-        .send({
-          error: {
-            code: "VALIDATION",
-            message: error.issues
-              .map((i) => `${i.path.join(".")}: ${i.message}`)
-              .join(";"),
-            issues: error.issues,
-          },
-        });
+      return reply.code(400).send({
+        error: {
+          code: "VALIDATION",
+          message: error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join(";"),
+          issues: error.issues,
+        },
+      });
     const err = error as { statusCode?: number; message: string };
     const status = err.statusCode ?? 500;
     if (status >= 500) app.log.error(error);
-    return reply
-      .code(status)
-      .send({
-        error: {
-          code:
-            status === 404
-              ? "NOT_FOUND"
-              : status === 401
-                ? "UNAUTHORIZED"
-                : "REQUEST_FAILED",
-          message:
-            status >= 500
-              ? "Something went wrong. Please try again."
-              : err.message,
-        },
-      });
+    return reply.code(status).send({
+      error: {
+        code:
+          status === 404
+            ? "NOT_FOUND"
+            : status === 401
+              ? "UNAUTHORIZED"
+              : "REQUEST_FAILED",
+        message:
+          status >= 500
+            ? "Something went wrong. Please try again."
+            : err.message,
+      },
+    });
   });
   app.route({
     method: ["GET", "POST"],
@@ -83,7 +80,10 @@ export function buildApp() {
     handler: async (req, reply) => {
       const headers = fromNodeHeaders(req.headers);
       const request = new Request(
-        `${process.env.BETTER_AUTH_URL ?? "http://localhost:4000"}${req.url}`,
+        new URL(
+          req.url,
+          serviceOrigin(process.env.BETTER_AUTH_URL, "http://localhost:4000"),
+        ),
         {
           method: req.method,
           headers,
@@ -108,22 +108,18 @@ export function buildApp() {
           !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
           req.headers.origin &&
           req.headers.origin !==
-            (process.env.WEB_URL ?? "http://localhost:3000")
+            serviceOrigin(process.env.WEB_URL, "http://localhost:3000")
         )
-          return reply
-            .code(403)
-            .send({
-              error: { code: "FORBIDDEN", message: "Origin not allowed" },
-            });
+          return reply.code(403).send({
+            error: { code: "FORBIDDEN", message: "Origin not allowed" },
+          });
         const session = await auth.api.getSession({
           headers: fromNodeHeaders(req.headers),
         });
         if (!session)
-          return reply
-            .code(401)
-            .send({
-              error: { code: "UNAUTHORIZED", message: "Please sign in" },
-            });
+          return reply.code(401).send({
+            error: { code: "UNAUTHORIZED", message: "Please sign in" },
+          });
         Object.assign(req, { userId: session.user.id });
       });
       const uid = (req: unknown) => (req as { userId: string }).userId;
