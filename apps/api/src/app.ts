@@ -7,6 +7,9 @@ import { ZodError, z } from "zod";
 import { db } from "../../../packages/server/db.js";
 import { auth } from "../../../packages/server/auth.js";
 import { serviceOrigin } from "../../../packages/shared/urls.js";
+import { dataRoutes } from "./routes/data.js";
+import { documentRoutes } from "./routes/documents.js";
+import { monitoringRoutes, operationalRoutes } from "./routes/monitoring.js";
 import {
   applicationSchema,
   interviewSchema,
@@ -78,6 +81,11 @@ export function buildApp() {
     method: ["GET", "POST"],
     url: "/api/auth/*",
     handler: async (req, reply) => {
+      if (req.url.split("?")[0].replace(/\/+$/, "") === "/api/auth/delete-user")
+        z.object({
+          password: z.string().min(1).max(128),
+          confirmation: z.literal("DELETE"),
+        }).parse(req.body);
       const headers = fromNodeHeaders(req.headers);
       const request = new Request(
         new URL(
@@ -101,9 +109,11 @@ export function buildApp() {
     },
   });
   app.get("/health", async () => ({ ok: true }));
+  operationalRoutes(app);
   app.register(
     async (protectedApp) => {
       protectedApp.addHook("preHandler", async (req, reply) => {
+        reply.header("Cache-Control", "private, no-store");
         if (
           !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
           req.headers.origin &&
@@ -120,20 +130,42 @@ export function buildApp() {
           return reply.code(401).send({
             error: { code: "UNAUTHORIZED", message: "Please sign in" },
           });
+        if (!session.user.emailVerified)
+          return reply.code(403).send({
+            error: {
+              code: "EMAIL_NOT_VERIFIED",
+              message: "Verify your email to continue.",
+            },
+          });
         Object.assign(req, { userId: session.user.id });
       });
+      dataRoutes(protectedApp);
+      documentRoutes(protectedApp);
+      monitoringRoutes(protectedApp);
       const uid = (req: unknown) => (req as { userId: string }).userId;
       protectedApp.get("/me", async (req) =>
         db.user.findUniqueOrThrow({
           where: { id: uid(req) },
-          select: { id: true, name: true, email: true, timezone: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            timezone: true,
+            emailVerified: true,
+          },
         }),
       );
       protectedApp.put("/me", async (req) =>
         db.user.update({
           where: { id: uid(req) },
           data: settingsSchema.parse(req.body),
-          select: { id: true, name: true, email: true, timezone: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            timezone: true,
+            emailVerified: true,
+          },
         }),
       );
       protectedApp.get("/applications", async (req) => {
@@ -296,6 +328,8 @@ export function buildApp() {
                 deliveryPayload: Prisma.DbNull,
                 deliveryStatus: "pending",
                 lastError: null,
+                attempts: 0,
+                lastAttemptAt: null,
                 completedAt: null,
                 cancelledAt: null,
               },
@@ -369,7 +403,7 @@ export function buildApp() {
           _count: true,
           orderBy: { status: "asc" },
         });
-        const [interviews, reminders, overdue, activity] =
+        const [interviews, reminders, overdue, activity, deliveryFailures] =
           await db.$transaction([
             db.interview.findMany({
               where: { application: { userId }, startsAt: { gte: now } },
@@ -405,6 +439,14 @@ export function buildApp() {
               orderBy: { createdAt: "desc" },
               take: 8,
             }),
+            db.reminder.count({
+              where: {
+                application: { userId },
+                deliveryStatus: "failed",
+                completedAt: null,
+                cancelledAt: null,
+              },
+            }),
           ]);
         return {
           total: counts.reduce((sum, c) => sum + c._count, 0),
@@ -413,6 +455,7 @@ export function buildApp() {
           reminders,
           overdue,
           activity,
+          deliveryFailures,
         };
       });
     },

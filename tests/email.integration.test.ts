@@ -33,6 +33,32 @@ async function inbox() {
     messages: { ID: string; Subject: string }[];
   };
 }
+it("requires a real email verification link before allowing password login", async () => {
+  const blocked = await app.inject({
+    method: "POST",
+    url: "/api/auth/sign-in/email",
+    headers: { origin: "http://localhost:3000" },
+    payload: { email, password: "Original-password-2026!" },
+  });
+  expect(blocked.statusCode).toBe(403);
+  const messages = await inbox();
+  const message = messages.messages.find(
+    (m) => m.Subject === "Verify your Folio email",
+  );
+  expect(message).toBeDefined();
+  const content = (await (
+    await fetch(`http://localhost:8025/api/v1/message/${message!.ID}`)
+  ).json()) as { Text: string };
+  const url = new URL(content.Text.match(/https?:\/\/\S+/)![0]);
+  const verified = await app.inject({
+    method: "GET",
+    url: url.pathname + url.search,
+  });
+  expect([200, 302]).toContain(verified.statusCode);
+  expect(
+    (await db.user.findUniqueOrThrow({ where: { id: userId } })).emailVerified,
+  ).toBe(true);
+});
 it("sends a recovery email to Mailpit and resets the password", async () => {
   const response = await app.inject({
     method: "POST",

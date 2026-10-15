@@ -7,6 +7,9 @@ const nav = [
   { href: "/dashboard", icon: "◫", label: "Overview" },
   { href: "/applications", icon: "▤", label: "Applications" },
   { href: "/schedule", icon: "◷", label: "Interviews & reminders" },
+  { href: "/contacts", icon: "♧", label: "Contacts" },
+  { href: "/documents", icon: "▱", label: "Documents" },
+  { href: "/delivery-status", icon: "↗", label: "Email delivery" },
   { href: "/settings", icon: "⚙", label: "Settings" },
 ];
 export function Shell({
@@ -83,13 +86,8 @@ export function Shell({
             <span>
               MY CAREER <span className="slash">/</span>{" "}
               <strong>
-                {path.startsWith("/applications")
-                  ? "Applications"
-                  : path.startsWith("/schedule")
-                    ? "Schedule"
-                    : path.startsWith("/settings")
-                      ? "Settings"
-                      : "Overview"}
+                {nav.find((item) => path.startsWith(item.href))?.label ??
+                  "Overview"}
               </strong>
             </span>
             <span className="private-label">◈ Private workspace</span>

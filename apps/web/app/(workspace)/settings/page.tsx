@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { AccountSecurity } from "../../../components/account-security";
 import { api, useUser, Feedback, useHydrated } from "../../../lib/client";
 export default function Settings() {
   const user = useUser();
@@ -73,6 +74,7 @@ export default function Settings() {
           </button>
         </form>
       </section>
+      <AccountSecurity />
     </>
   );
 }

@@ -18,6 +18,7 @@ type Dashboard = {
   reminders: ScheduledReminder[];
   overdue: ScheduledReminder[];
   activity: (StatusHistory & { application: Application })[];
+  deliveryFailures: number;
 };
 export function DashboardView() {
   const { data, loading, error, refresh } =
@@ -41,6 +42,12 @@ export function DashboardView() {
       <ResourceState loading={loading} error={error} retry={refresh} />
       {data && !loading && (
         <>
+          {data.deliveryFailures > 0 && (
+            <div className="feedback error" role="status">
+              {data.deliveryFailures} reminder email(s) need attention.{" "}
+              <Link href="/delivery-status">Review delivery failures →</Link>
+            </div>
+          )}
           <div className="stats-grid">
             <Link href="/applications" className="stat-card">
               <span>

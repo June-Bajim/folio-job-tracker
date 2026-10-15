@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import { ContactsView } from "./contacts";
+import { ApplicationDocuments } from "./documents";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Interview, Reminder } from "@prisma/client";
@@ -352,6 +354,10 @@ export function ApplicationDetails({ id }: { id: string }) {
                     </div>
                   )}
                 </section>
+              </div>
+              <div className="detail-extras">
+                <ContactsView applicationId={id} />
+                <ApplicationDocuments applicationId={id} />
               </div>
               <aside className="panel history">
                 <div className="section-heading">

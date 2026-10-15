@@ -31,8 +31,19 @@ async function signup(email: string) {
     "",
   );
   expect(r.statusCode, r.body).toBe(200);
+  await db.user.update({
+    where: { id: r.json().user.id },
+    data: { emailVerified: true },
+  });
+  const login = await request(
+    "POST",
+    "/auth/sign-in/email",
+    { email, password: "Test-password-2026!" },
+    "",
+  );
+  expect(login.statusCode, login.body).toBe(200);
   return {
-    cookie: r.cookies.map((c) => `${c.name}=${c.value}`).join("; "),
+    cookie: login.cookies.map((c) => `${c.name}=${c.value}`).join("; "),
     id: r.json().user.id as string,
   };
 }

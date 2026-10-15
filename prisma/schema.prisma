@@ -17,6 +17,9 @@ model User {
   sessions Session[]
   accounts Account[]
   applications Application[]
+  contacts Contact[]
+  documents Document[]
+  imports ImportBatch[]
 }
 model Session {
   id String @id
@@ -94,6 +97,8 @@ model Application {
   interviews Interview[]
   reminders Reminder[]
   history StatusHistory[]
+  contacts Contact[]
+  documents ApplicationDocument[]
   @@index([userId, createdAt])
   @@index([userId, status, arrangement])
   @@index([userId, company])
@@ -126,6 +131,9 @@ model Reminder {
   deliveryPayload Json?
   deliveryStatus String @default("pending")
   lastError String?
+  attempts Int @default(0)
+  lastAttemptAt DateTime?
+  deliveryAttempts DeliveryAttempt[]
   createdAt DateTime @default(now())
   @@index([dueAt, deliveryStatus])
   @@index([applicationId])
@@ -138,4 +146,85 @@ model StatusHistory {
   toStatus Status
   createdAt DateTime @default(now())
   @@index([applicationId, createdAt])
+}
+model Contact {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  name String
+  company String @default("")
+  title String @default("")
+  email String?
+  phone String @default("")
+  profileUrl String?
+  notes String @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId, name])
+  @@index([applicationId])
+}
+model Document {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name String
+  kind String
+  createdAt DateTime @default(now())
+  versions DocumentVersion[]
+  @@index([userId, createdAt])
+}
+model DocumentVersion {
+  id String @id @default(cuid())
+  documentId String
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  number Int
+  label String
+  filename String
+  mimeType String
+  size Int
+  sha256 String
+  content Bytes
+  notes String @default("")
+  createdAt DateTime @default(now())
+  applications ApplicationDocument[]
+  @@unique([documentId, number])
+}
+model ApplicationDocument {
+  id String @id @default(cuid())
+  applicationId String
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  versionId String
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([applicationId, versionId])
+  @@index([versionId])
+}
+model ImportBatch {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checksum String
+  count Int
+  createdAt DateTime @default(now())
+  @@unique([userId, checksum])
+}
+model DeliveryAttempt {
+  id String @id @default(cuid())
+  reminderId String
+  reminder Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  revision Int
+  outcome String
+  error String?
+  createdAt DateTime @default(now())
+  @@index([reminderId, createdAt])
+}
+model WorkerHealth {
+  id String @id
+  startedAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  lastSuccessAt DateTime?
+  lastError String?
+  failures Int @default(0)
 }

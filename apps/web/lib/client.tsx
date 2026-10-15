@@ -18,6 +18,7 @@ export type User = {
   name: string;
   email: string;
   timezone: string;
+  emailVerified: boolean;
 };
 export type AppRecord = Application & {
   interviews: Interview[];
@@ -31,6 +32,7 @@ export const UserContext = createContext<User>({
   name: "",
   email: "",
   timezone: "UTC",
+  emailVerified: false,
 });
 export const useUser = () => useContext(UserContext);
 const subscribe = () => () => {};
@@ -57,9 +59,40 @@ export async function api<T = unknown>(
   }
   if (response.status === 204) return undefined as T;
   const data = await response.json();
+  if (data.error?.code === "EMAIL_NOT_VERIFIED") {
+    window.location.assign("/verify-email");
+    throw new Error("Verify your email to continue.");
+  }
   if (!response.ok)
     throw new Error(data.error?.message ?? data.message ?? "Request failed");
   return data;
+}
+export async function downloadFile(path: string, filename: string) {
+  const response = await fetch(
+    `/api${path}${path.includes("?") ? "&" : "?"}format=json`,
+    { credentials: "include" },
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(
+      data.error?.message ??
+        "File download failed. Please sign in and try again.",
+    );
+  }
+  const file = (await response.json()) as { mimeType: string; content: string };
+  const bytes = Uint8Array.from(atob(file.content), (character) =>
+    character.charCodeAt(0),
+  );
+  if (!bytes.length)
+    throw new Error("The file response was empty. Please retry.");
+  const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 export function useResource<T>(path: string) {
   const [data, setData] = useState<T>();

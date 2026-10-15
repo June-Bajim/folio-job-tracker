@@ -1,9 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
+import { CsvTransfer } from "./csv-transfer";
 import { useSearchParams, useRouter } from "next/navigation";
 import { statuses, arrangements } from "../../../packages/shared/schemas";
 import {
+  downloadFile,
+  Feedback,
   useResource,
   useUser,
   ResourceState,
@@ -16,6 +19,8 @@ export function ApplicationList() {
   const search = useSearchParams();
   const router = useRouter();
   const user = useUser();
+  const [transferError, setTransferError] = useState("");
+  const [showImport, setShowImport] = useState(false);
   const [searchText, setSearchText] = useState(search.get("search") ?? "");
   const searchInput = useRef<HTMLInputElement>(null);
   const urlSearch = search.get("search") ?? "";
@@ -51,10 +56,44 @@ export function ApplicationList() {
           </h1>
           <p>Keep the details close and the next step clear.</p>
         </div>
-        <Link className="button primary" href="/applications/new">
-          ＋ Add application
-        </Link>
+        <div className="button-group">
+          <a
+            className="button secondary"
+            href="/api/applications/export"
+            download="folio-applications.csv"
+            onClick={async (e) => {
+              e.preventDefault();
+              setTransferError("");
+              try {
+                await downloadFile(
+                  "/applications/export",
+                  "folio-applications.csv",
+                );
+              } catch (e) {
+                setTransferError((e as Error).message);
+              }
+            }}
+          >
+            Export CSV ↓
+          </a>
+          <button
+            className="secondary"
+            onClick={() => setShowImport((v) => !v)}
+          >
+            Import CSV
+          </button>
+          <Link className="button primary" href="/applications/new">
+            ＋ Add application
+          </Link>
+        </div>
       </div>
+      {showImport && (
+        <CsvTransfer
+          onImported={refresh}
+          onClose={() => setShowImport(false)}
+        />
+      )}
+      <Feedback error={transferError} />
       <section className="panel list-panel">
         <div className="filters">
           <label className="search-field">

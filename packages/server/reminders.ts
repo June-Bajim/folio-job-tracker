@@ -2,6 +2,7 @@ import { db } from "./db.js";
 import { reminderQueue, jobId } from "./queue.js";
 import { sendEmail } from "./email.js";
 import { z } from "zod";
+import { serviceOrigin } from "../shared/urls.js";
 const payloadSchema = z.object({
   to: z.string(),
   subject: z.string(),
@@ -74,6 +75,16 @@ export async function deliver(id: string, revision: number, email = sendEmail) {
       r.dueAt.getTime() > Date.now()
     )
       return;
+    if (!r.application.user.emailVerified) {
+      await tx.reminder.update({
+        where: { id },
+        data: {
+          deliveryStatus: "failed",
+          lastError: "Verify your email, then retry this reminder.",
+        },
+      });
+      return;
+    }
     await tx.reminder.update({
       where: { id },
       data: {
@@ -81,7 +92,7 @@ export async function deliver(id: string, revision: number, email = sendEmail) {
         deliveryPayload: {
           to: r.application.user.email,
           subject: `Follow up · ${r.application.company}`,
-          text: `${r.message}\n\n${r.application.jobTitle} at ${r.application.company}\n${process.env.WEB_URL}/applications/${r.applicationId}`,
+          text: `${r.message}\n\n${r.application.jobTitle} at ${r.application.company}\n${serviceOrigin(process.env.WEB_URL, "http://localhost:3000")}/applications/${r.applicationId}`,
         },
       },
     });
@@ -127,7 +138,16 @@ export async function deliver(id: string, revision: number, email = sendEmail) {
       );
       await tx.reminder.update({
         where: { id },
-        data: { sentAt: new Date(), deliveryStatus: "sent", lastError: null },
+        data: {
+          sentAt: new Date(),
+          deliveryStatus: "sent",
+          lastError: null,
+          attempts: { increment: 1 },
+          lastAttemptAt: new Date(),
+        },
+      });
+      await tx.deliveryAttempt.create({
+        data: { reminderId: id, revision, outcome: "sent" },
       });
     },
     { timeout: 25000, maxWait: 30000 },

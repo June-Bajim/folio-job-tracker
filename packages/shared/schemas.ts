@@ -84,3 +84,38 @@ export const settingsSchema = z.object({
   }, "Choose a valid IANA timezone"),
 });
 export type ApplicationInput = z.infer<typeof applicationSchema>;
+export const contactSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  company: z.string().trim().max(200).default(""),
+  title: z.string().trim().max(200).default(""),
+  email: z.string().email().max(254).nullable().optional(),
+  phone: z.string().max(80).default(""),
+  profileUrl: url,
+  notes: z.string().max(10000).default(""),
+  applicationId: z.string().min(1).nullable().optional(),
+});
+export const MAX_DOCUMENT_BYTES = 3 * 1024 * 1024;
+export const documentUploadSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  kind: z.enum(["resume", "cover_letter"]),
+  label: z.string().trim().min(1).max(100),
+  filename: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (v) =>
+        !v.includes("/") &&
+        !v.includes("\\") &&
+        Array.from(v).every(
+          (c) => c.charCodeAt(0) >= 32 && c.charCodeAt(0) !== 127,
+        ),
+      "Use a filename without path separators or control characters",
+    ),
+  content: z
+    .string()
+    .min(1)
+    .max(Math.ceil(MAX_DOCUMENT_BYTES / 3) * 4)
+    .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  notes: z.string().max(10000).default(""),
+});

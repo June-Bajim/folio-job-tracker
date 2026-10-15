@@ -7,7 +7,7 @@ A responsive, authenticated job application tracker. Next.js / React / Tailwind 
 Requirements: Node.js 22.14 or newer, npm, Docker Desktop running Linux containers, and Google Chrome for the browser tests.
 
 ```powershell
-npm ci
+npm ci --include=dev
 Copy-Item .env.example .env
 # Edit .env: replace BETTER_AUTH_SECRET with a random secret, at least 32 characters.
 # Generate one with: node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -17,7 +17,7 @@ npm run db:migrate
 npm run dev
 ```
 
-Open http://localhost:3000 and register an account. Registration creates an empty workspace. The web app, API, and worker run together; Ctrl+C stops all three. PostgreSQL, Redis and the mail inbox remain running until `docker compose stop`. Data survives restarts in Docker volumes. Do not use `docker compose down -v` unless you intend to erase the development database and queue.
+Open http://localhost:3000 and register an account. Open Mailpit at http://localhost:8025, follow the verification link, then sign in. Registration creates an empty workspace. The web app, API, and worker run together; Ctrl+C stops all three. PostgreSQL, Redis and the mail inbox remain running until `docker compose stop`. Data survives restarts in Docker volumes. Do not use `docker compose down -v` unless you intend to erase the development database and queue.
 
 Services:
 
@@ -129,3 +129,66 @@ docker compose cp postgres:/tmp/folio.dump ./backups/folio.dump
 Restore into a separate empty database with `pg_restore` and verify before switching services. Back up Redis AOF as operational state; PostgreSQL reconciliation can rebuild pending schedules after Redis loss. Avoid replaying old database backups against live email delivery without reviewing sent records and provider logs, as restored snapshots can predate accepted emails.
 
 The repository has no default seed account. Automated tests use fictional records explicitly and remove them. External Resend credentials, a verified sender, production hosting, DNS/TLS, backups and monitoring remain deployment configuration.
+
+## Workspace tools and account controls
+
+Applications now support CSV import/export from the list page. Download the blank template for canonical headers; `company` and `jobTitle` are required. Optional columns are `jobUrl`, `location`, `arrangement`, `salaryMin`, `salaryMax`, `currency`, `status`, `dateApplied` and `notes`. Dates use YYYY-MM-DD, salaries are numeric, and values follow the existing application schemas. Import accepts at most 500 rows / 1 MB, shows the first ten normalized rows, reports row-level errors, and requires confirmation. Invalid batches save nothing. Import and initial status history are committed atomically. A per-user normalized batch checksum prevents reimporting the same data; it does not deduplicate individual records from different files. Export includes all of the owner's applications and protects spreadsheet formula-leading cells. Folio imports restore the escaped leading characters for a round trip.
+
+Contacts support name, company, title, email, phone, profile URL and communication notes. Add a contact from application details to link it; manage all contacts from the Contacts page. Deleting an application unlinks its contacts and preserves them in the owner's contact list. Deleting the account removes the contacts.
+
+The document library stores resume/cover-letter PDF and DOCX files as PostgreSQL binary data. No new object-storage credentials are needed. Files are limited to **3 MB each** and **100 MB per account**, which keeps JSON/base64 uploads suitable for the existing Netlify proxy. The server checks extension and file signatures, rejects unsafe filenames, derives the download MIME type, and provides authenticated attachment downloads with no-store/nosniff headers. The web app transfers file data through authenticated JSON responses and downloads a local Blob so that errors are shown before a file is saved; direct attachment endpoints remain available for API clients.
+
+Each upload creates an immutable, numbered version with its label, notes, size and SHA-256 digest. Application details link a specific version rather than a moving latest-version pointer. New versions leave submitted files unchanged. Deleting a document explicitly deletes all versions and removes its application links. PostgreSQL backups now contain the files; size backup retention and encryption accordingly. For substantially larger libraries, migrate the binary storage to an authenticated object store while retaining these version IDs.
+
+Email verification is required for password sign-in and protected API access. Registration sends a one-hour verification link; `/verify-email` can resend it. **Existing unverified accounts must verify their email too**. Production must have a working verified Resend sender before releasing this change. Locally, open Mailpit at http://localhost:8025, follow the verification link, and sign in. Password changes verify the current password and revoke other sessions; password recovery also revokes other sessions. Account deletion requires the current password and the exact `DELETE` confirmation, then uses Better Auth to remove the user and sessions. Database cascades remove owned applications, interview/reminder/history records, contacts, import records, documents, binary versions and document links. Queued jobs contain only record IDs/revisions and are invalidated by deletion; reconciliation removes stale jobs. An email already accepted by a provider cannot be recalled. Historical backups and mail-provider retention remain governed by their retention policies.
+
+## Delivery monitoring
+
+The Email delivery page shows the signed-in owner's pending, accepted, failed and delayed reminder emails, plus worker heartbeat status and recent attempt history. A dashboard notice links to open failures. Explicit retry requires confirmation and creates a new revision. For uncertain sends, inspect provider logs first; retrying an email already accepted under an older key can send another copy. Unverified owners' reminders fail without emailing them and can be retried after verification.
+
+Workers persist heartbeat and reconciliation success every five seconds. A worker is stale after two minutes; reminders pending more than five minutes after their due time count as delayed. Durable attempt records distinguish success from temporary/exhausted failure and remain separate from reminder completion. Customer-visible errors are generic; structured failure logs contain record IDs, revision and error class, without recipients or email bodies. Stopped-worker heartbeat records age out after seven days.
+
+For external uptime/incident monitoring, set a separate random **MONITORING_TOKEN** (at least 32 characters) on the API service, then configure your monitoring service to request:
+
+```text
+GET https://YOUR-API.up.railway.app/health/worker
+Authorization: Bearer YOUR_MONITORING_TOKEN
+```
+
+The endpoint returns 200 only when a worker has recently reconciled successfully and there are no open failed or delayed deliveries; otherwise it returns 503 (or 500 if the database cannot be read). Without the correct token it returns 401. Its aggregate counts span the service and are therefore available only with this operations token. Keep it out of Netlify's browser variables. `/health` remains a separate process-liveness endpoint. Configure the external monitor to alert on non-200 responses and recovery; no external monitor is automatically provisioned by this repository.
+
+## Releasing this update to Railway and Netlify
+
+1. Ensure the production Resend key and verified sender work; existing accounts will need a verification email after this release. All public origin variables should point to the appropriate site without a path.
+2. Deploy the API first with `npm run db:migrate` as its Railway pre-deploy command. Migration `202610150003_workspace_tools` adds the new tables and delivery fields without removing existing applications. The backend build command is `npm ci --include=dev && npm run db:generate && npx tsc -p tsconfig.build.json`; keep the repository root as the service root. Keep development dependencies available for release migrations (`RAILPACK_PRUNE_DEPS=false` when using Railpack).
+3. Deploy the worker from the same commit, after the migration. Its start command remains `npm run start:worker`. Set the optional MONITORING_TOKEN on the API if using external health checks.
+4. Deploy Netlify from that commit. Base directory: repository root; package directory: `apps/web`; build command: `npx prisma generate && npx next build apps/web --webpack`; publish: `apps/web/.next`; leave custom Functions directory unset. Set API_URL to the public Railway API origin for both Builds and Functions.
+5. Verify a real email verification, CSV preview/import/export, a PDF upload and version link, and a due reminder in your deployed environment. Local tests are not proof of external delivery or hosting success.
+
+### Additional API routes
+
+All `/api` routes below require an authenticated, verified owner except the Better Auth verification endpoints.
+
+| Method      | Route                                     | Purpose                                                                           |
+| ----------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
+| GET         | `/api/applications/export`                | Application CSV; `?format=json` returns a base64 file envelope for the web client |
+| GET         | `/api/applications/import/template`       | Blank CSV template; also supports `?format=json`                                  |
+| POST        | `/api/applications/import/preview`        | Validate `{csv}` and preview the first ten rows                                   |
+| POST        | `/api/applications/import`                | Atomically import a valid `{csv}` batch                                           |
+| GET, POST   | `/api/contacts`                           | Search/list and create contacts                                                   |
+| PUT, DELETE | `/api/contacts/:id`                       | Replace contact fields or delete                                                  |
+| GET, POST   | `/api/documents`                          | List metadata or upload a new document with its first version                     |
+| POST        | `/api/documents/:id/versions`             | Append a new immutable version                                                    |
+| GET         | `/api/document-versions/:id/download`     | Authenticated attachment download                                                 |
+| GET         | `/api/document-versions/:id/content`      | Authenticated `{filename,mimeType,content}` base64 envelope                       |
+| DELETE      | `/api/documents/:id`                      | Delete the document, all versions and application links                           |
+| GET, POST   | `/api/applications/:id/documents`         | List submitted versions or link `{versionId}`                                     |
+| DELETE      | `/api/applications/:id/documents/:linkId` | Unlink a submitted version                                                        |
+| GET         | `/api/delivery-status`                    | Owner's delivery counts, failures, attempts and worker status                     |
+| GET         | `/api/reminders/:id/attempts`             | Recent delivery attempt history                                                   |
+| POST        | `/api/reminders/:id/retry`                | Explicitly retry a failed, open reminder with `{confirm:true}`                    |
+| POST        | `/api/auth/send-verification-email`       | Send verification to `{email,callbackURL}`                                        |
+| POST        | `/api/auth/change-password`               | Better Auth `{currentPassword,newPassword,revokeOtherSessions:true}`              |
+| POST        | `/api/auth/delete-user`                   | Better Auth account deletion with `{password,confirmation:"DELETE"}`              |
+
+Document uploads use `{name,kind,label,filename,content,notes}`. `kind` is `resume` or `cover_letter`; `content` is base64; `label` identifies the immutable version. Repeated uploads to the versions endpoint keep the existing document name/type. Contact fields are defined in `contactSchema` in `packages/shared/schemas.ts`.

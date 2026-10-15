@@ -10,6 +10,8 @@ export const auth = betterAuth({
   trustedOrigins: [serviceOrigin(process.env.WEB_URL, "http://localhost:3000")],
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+    revokeSessionsOnPasswordReset: true,
     minPasswordLength: 10,
     sendResetPassword: async ({ user, url }) => {
       await sendEmail(
@@ -19,7 +21,30 @@ export const auth = betterAuth({
       );
     },
   },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    expiresIn: 3600,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendEmail(
+        user.email,
+        "Verify your Folio email",
+        `Verify your email to access Folio: ${url}`,
+      );
+    },
+  },
+  rateLimit: {
+    enabled: process.env.NODE_ENV === "production",
+    window: 60,
+    max: 100,
+    customRules: {
+      "/send-verification-email": { window: 60, max: 3 },
+      "/sign-up/email": { window: 60, max: 5 },
+      "/sign-in/email": { window: 60, max: 10 },
+    },
+  },
   user: {
+    deleteUser: { enabled: true },
     additionalFields: {
       timezone: { type: "string", defaultValue: "UTC", input: false },
     },

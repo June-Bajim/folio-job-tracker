@@ -14,6 +14,7 @@ export default async function ProtectedLayout({
     { headers: { cookie: h.get("cookie") ?? "" }, cache: "no-store" },
   );
   if (response.status === 401) redirect("/login");
+  if (response.status === 403) redirect("/verify-email");
   if (!response.ok) throw new Error("Unable to load account");
   return <Shell user={await response.json()}>{children}</Shell>;
 }

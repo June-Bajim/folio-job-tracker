@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { api, Feedback, useHydrated } from "../lib/client";
 export function AuthForm({
   mode,
@@ -11,6 +11,16 @@ export function AuthForm({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (mode !== "login") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error"))
+      setError(
+        "This verification link is invalid or expired. Request a new verification link.",
+      );
+    else if (params.get("verified") === "1")
+      setSuccess("Email verified. You can now sign in.");
+  }, [mode]);
   const title = {
     login: "Welcome back.",
     register: "Your next chapter starts here.",
@@ -49,9 +59,14 @@ export function AuthForm({
             email: f.get("email"),
             password: f.get("password"),
             ...(mode === "register" ? { name: f.get("name") } : {}),
+            callbackURL: `${window.location.origin}/login?verified=1`,
           },
         );
-        window.location.assign("/dashboard");
+        window.location.assign(
+          mode === "register"
+            ? `/verify-email?email=${encodeURIComponent(String(f.get("email")))}`
+            : "/dashboard",
+        );
       }
     } catch (e) {
       setError((e as Error).message);
@@ -151,6 +166,9 @@ export function AuthForm({
             {mode === "login" ? (
               <>
                 <Link href="/forgot-password">Forgot password?</Link>
+                <p>
+                  <Link href="/verify-email">Verify email or resend link</Link>
+                </p>
                 <p>
                   New here? <Link href="/register">Create an account</Link>
                 </p>
